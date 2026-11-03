@@ -90,7 +90,8 @@ async def authorize(request: Request, call_next, origin: str):
     if mutating and getattr(request.state, "admin", None):
         route = getattr(request.scope.get("route"), "path", None)
         if route and path.startswith("/api/"):
-            _audit(request.method, route, response.status_code)
+            _audit(request.method, route if route.startswith("/api/") else "/api" + route,
+                   response.status_code)
     return response
 
 
