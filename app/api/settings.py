@@ -439,6 +439,8 @@ class DatasourceCheckIn(BaseModel):
 @router.post("/datasource/check")
 def ds_check(body: DatasourceCheckIn):
     """Use the user's public account as an explicit, potentially billable probe."""
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..datasource import EndpointExecutor, SUPPORTED_PLATFORMS
     if body.platform not in SUPPORTED_PLATFORMS:
         raise validation_failed(f"暂不支持平台：{body.platform}")
@@ -461,6 +463,8 @@ class LLMCheckIn(BaseModel):
 
 @router.get("/llm/models")
 def llm_models():
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealLLMProvider
     models = RealLLMProvider().list_models()
     return ok({"models": models, "count": len(models),
@@ -469,6 +473,8 @@ def llm_models():
 
 @router.post("/llm/check")
 def llm_check(body: LLMCheckIn):
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealLLMProvider
     result = RealLLMProvider().check_connection(body.model)
     return ok({**result, "note": f"模型 {result['model']} 连接与最小生成测试通过。"})
@@ -495,6 +501,8 @@ def image_check():
 @router.post("/stt/check")
 async def stt_check(file: UploadFile = File(...)):
     """Explicit, potentially billable ASR probe with a user-supplied audio file."""
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealSTTProvider
     payload = await file.read(config.MAX_AUDIO_UPLOAD_BYTES + 1)
     if len(payload) > config.MAX_AUDIO_UPLOAD_BYTES:

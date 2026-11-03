@@ -50,7 +50,7 @@ jobs:
             -e JIANZHOU_ADMIN_PASSWORD -e JIANZHOU_SECRET_KEY \
             -e JIANZHOU_WEB_ORIGIN=https://preview.example.test jianzhou-preview:ci
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:18741/healthz && test -f "$tmp/app.db"; then exit 0; fi
+            if curl -fsS http://127.0.0.1:18741/healthz && sudo test -f "$tmp/app.db"; then exit 0; fi
             sleep 1
           done
           docker logs jianzhou-preview-ci
