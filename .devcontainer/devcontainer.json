@@ -1,0 +1,18 @@
+{
+  "name": "见舟工作台 Demo",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "forwardPorts": [
+    8741
+  ],
+  "portsAttributes": {
+    "8741": {
+      "label": "见舟工作台 Demo",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt",
+  "postStartCommand": "bash scripts/start_cloud_preview.sh"
+}

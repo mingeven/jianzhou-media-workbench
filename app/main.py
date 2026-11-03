@@ -1,4 +1,5 @@
 """FastAPI 应用装配：API 路由、静态前端、错误体系、Job Worker。"""
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -109,10 +110,16 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(api_router)
 
+    codespaces_origin = None
+    codespace = os.environ.get("CODESPACE_NAME")
+    if config.BUILD_PROFILE == "codespaces" and os.environ.get("CODESPACES") == "true" and codespace:
+        codespaces_origin = f"https://{codespace}-8741.app.github.dev"
+
     @app.middleware("http")
     async def security_headers(request, call_next):
         origin = request.headers.get("origin", "")
         if origin and origin not in {
+            codespaces_origin,
             "http://127.0.0.1:8741", "http://localhost:8741",
             f"http://127.0.0.1:{request.url.port or 80}",
             f"http://localhost:{request.url.port or 80}",
