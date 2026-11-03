@@ -1,8 +1,6 @@
 name: Cloud preview checks
 
 on:
-  push:
-    branches: [feature/cloud-preview]
   pull_request:
     branches: [develop]
 
@@ -20,6 +18,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m pip install -r requirements.txt
       - run: python -m compileall -q app app.py tests
       - name: Run unit tests with isolated data
