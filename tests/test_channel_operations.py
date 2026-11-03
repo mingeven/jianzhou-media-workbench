@@ -450,6 +450,8 @@ class ChannelOperationsTests(unittest.TestCase):
     def test_wechat_secret_is_hidden_and_draft_boundary_is_explicit(self):
         result = run_isolated("""
             import json
+            import os
+            from unittest.mock import patch
             from app.api.channels import wechat_status
             from app.api.settings import SettingsIn, get_settings, put_settings
             from app.db import init_db
@@ -457,10 +459,17 @@ class ChannelOperationsTests(unittest.TestCase):
             from app.secret_store import get_secret
 
             init_db(); _ensure_settings()
-            put_settings(SettingsIn(section='wechat_official', values={
-                'enabled': True, 'app_id': 'wx-test-app-id',
-                'app_secret': 'wechat-secret-value', 'account_name': '测试公众号',
-            }))
+            # The settings contract uses a credential-store adapter. Exercise
+            # it without relying on the desktop Keychain or Windows DPAPI.
+            def save_credential(name, value):
+                os.environ['JIANZHOU_WECHAT_APP_SECRET'] = value
+
+            with patch('app.api.settings.set_secret', side_effect=save_credential) as store:
+                put_settings(SettingsIn(section='wechat_official', values={
+                    'enabled': True, 'app_id': 'wx-test-app-id',
+                    'app_secret': 'wechat-secret-value', 'account_name': '测试公众号',
+                }))
+            store.assert_called_once_with('wechat_app_secret', 'wechat-secret-value')
             public = get_settings()['data']['wechat_official']
             status = wechat_status()['data']
             print(json.dumps({
@@ -527,6 +536,7 @@ class ChannelOperationsTests(unittest.TestCase):
     def test_wechat_probe_records_blocked_ip_without_claiming_publish_permission(self):
         result = run_isolated("""
             import json
+            import os
             from unittest.mock import patch
             from app.api import set_current_user
             from app.api.channels import channels_overview, test_wechat, wechat_status
@@ -539,8 +549,9 @@ class ChannelOperationsTests(unittest.TestCase):
             init_db(); _ensure_settings()
             with transaction(): seed_if_empty()
             set_current_user('u-zhou')
+            os.environ['JIANZHOU_WECHAT_APP_SECRET'] = 'probe-secret'
             put_settings(SettingsIn(section='wechat_official', values={
-                'enabled': True, 'app_id': 'wx-probe-app', 'app_secret': 'probe-secret',
+                'enabled': True, 'app_id': 'wx-probe-app',
                 'account_name': '测试公众号', 'draft_push_enabled': True,
                 'publish_enabled': True,
             }))
