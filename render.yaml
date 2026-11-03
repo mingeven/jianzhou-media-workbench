@@ -1,0 +1,19 @@
+# Review only. Applying this Blueprint would create billable resources.
+services:
+  - type: web
+    name: jianzhou-workbench-preview
+    runtime: docker
+    dockerfilePath: ./Dockerfile.web
+    branch: develop
+    plan: starter
+    autoDeployTrigger: checksPass
+    healthCheckPath: /healthz
+    disk:
+      name: jianzhou-preview-data
+      mountPath: /var/lib/jianzhou
+      sizeGB: 1
+    envVars:
+      - key: JIANZHOU_ADMIN_PASSWORD
+        sync: false
+      - key: JIANZHOU_SECRET_KEY
+        generateValue: true

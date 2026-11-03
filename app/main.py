@@ -3,10 +3,11 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config
+from . import config, web_admin
 from .api import api_router
 from .db import init_db
 from .errors import register_error_handlers
@@ -16,6 +17,9 @@ from .seed import ensure_data_scopes, seed_if_empty
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if config.WEB_MODE:
+        from . import web_secrets
+        web_secrets.validate_key()
     init_db()
     _ensure_settings()
     _apply_execution_mode()
@@ -101,7 +105,7 @@ def _apply_execution_mode() -> None:
     from .db import jloads, query_one
     row = query_one("SELECT value_json FROM app_settings WHERE key='execution'")
     values = jloads(row["value_json"], {}) if row else {}
-    config.set_demo_mode(values.get("mode", "demo") != "real")
+    config.set_demo_mode(config.PREVIEW_ONLY or values.get("mode", "demo") != "real")
 
 
 def create_app() -> FastAPI:
@@ -109,6 +113,14 @@ def create_app() -> FastAPI:
                   lifespan=lifespan)
     register_error_handlers(app)
     app.include_router(api_router)
+    origin = web_admin.web_origin() if config.WEB_MODE else None
+    if config.WEB_MODE:
+        app.include_router(web_admin.router)
+        app.add_exception_handler(RequestValidationError, web_admin.hide_validation_input)
+
+        @app.get("/admin", include_in_schema=False)
+        def admin_page():
+            return FileResponse(config.FRONTEND_DIR / "admin.html")
 
     codespaces_origin = None
     codespace = os.environ.get("CODESPACE_NAME")
@@ -117,19 +129,19 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def security_headers(request, call_next):
-        origin = request.headers.get("origin", "")
-        if origin and origin not in {
+        request_origin = request.headers.get("origin", "")
+        if not config.WEB_MODE and request_origin and request_origin not in {
             codespaces_origin,
             "http://127.0.0.1:8741", "http://localhost:8741",
             f"http://127.0.0.1:{request.url.port or 80}",
             f"http://localhost:{request.url.port or 80}",
         }:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=403, content={
                 "success": False,
                 "error": {"code": "ORIGIN_NOT_ALLOWED", "message": "请求来源不受信任"},
             })
-        response = await call_next(request)
+        response = (await web_admin.authorize(request, call_next, origin)
+                    if config.WEB_MODE else await call_next(request))
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -144,6 +156,8 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     def healthz():
+        if config.WEB_MODE:
+            return {"ok": True, "web_mode": True}
         from .db import query_one
         version = query_one("PRAGMA user_version")
         return {"ok": True, "demo_mode": config.DEMO_MODE,
@@ -165,6 +179,8 @@ def create_app() -> FastAPI:
 
     @app.get("/{full_path:path}")
     def index(full_path: str = ""):
+        if full_path == "api" or full_path.startswith("api/") or full_path == "admin":
+            return JSONResponse({"success": False, "error": {"code": "NOT_FOUND", "message": "页面不存在。"}}, status_code=404)
         return FileResponse(config.FRONTEND_DIR / "index.html")
 
     return app

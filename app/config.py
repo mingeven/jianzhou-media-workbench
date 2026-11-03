@@ -35,6 +35,8 @@ LOG_DIR = DATA_DIR / "logs"
 UPLOAD_DIR = DATA_DIR / "uploads"
 FRONTEND_DIR = RESOURCE_DIR / "frontend"
 
+WEB_MODE = os.environ.get("JIANZHOU_WEB_MODE") == "1"
+PREVIEW_ONLY = WEB_MODE and os.environ.get("JIANZHOU_PREVIEW_ONLY", "1") == "1"
 DEMO_MODE = os.environ.get("JIANZHOU_DEMO", "1") == "1"
 BUILD_PROFILE = os.environ.get(
     "JIANZHOU_BUILD_PROFILE",

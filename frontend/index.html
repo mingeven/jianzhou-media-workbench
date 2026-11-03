@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/assets/css/app.css?v=20260811-file-picker-v7">
 </head>
 <body>
+<noscript>请启用 JavaScript 后打开见舟工作台。</noscript>
 <div id="app" v-cloak>
   <div class="app">
     <!-- ============ 侧边栏 ============ -->
@@ -15,7 +16,7 @@
         <div class="brand-mark">舟</div>
         <div>
           <div class="brand-name">见舟工作台</div>
-          <div class="brand-sub">本地优先 · v2.1</div>
+          <div class="brand-sub">{{ runtime.web_mode ? '网页工作台' : '本地优先 · v2.1' }}</div>
         </div>
       </div>
       <div class="sb-scroll">
@@ -41,7 +42,8 @@
         </button>
       </div>
       <div class="sb-foot">
-        <div class="local-badge"><span class="dot-live"></span>本地模式 · 数据保存在本机</div>
+        <a v-if="runtime.web_mode" class="nav-item web-admin-link" href="/admin">管理后台</a>
+        <div class="local-badge"><span class="dot-live"></span>{{ runtime.web_mode ? 'HTTPS · 已登录' : '本地模式 · 数据保存在本机' }}</div>
       </div>
     </aside>
 
@@ -67,7 +69,7 @@
           <div class="page-runtime-error-icon">!</div>
           <div>
             <h2>{{ pageError.title }}加载失败</h2>
-            <p>页面发生了可定位的运行时错误，系统已保留诊断信息。你的本地数据没有被删除。</p>
+            <p>页面发生了可定位的运行时错误，系统已保留诊断信息。已有数据已保留。</p>
             <code>{{ pageError.message }}</code>
             <div class="page-runtime-error-actions">
               <button class="btn btn-pri" @click="retryPage">重新加载本页</button>

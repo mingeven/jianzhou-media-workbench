@@ -18,7 +18,7 @@ from pathlib import Path
 if os.name == "nt":
     from ctypes import wintypes
 
-from .config import DATA_DIR
+from .config import DATA_DIR, WEB_MODE
 from .errors import AppError
 
 SECRET_FILE = DATA_DIR / "secrets.json"
@@ -156,6 +156,9 @@ def get_secret(name: str) -> str:
     env_name = _ENV_KEYS.get(name)
     if env_name and os.environ.get(env_name):
         return os.environ[env_name]
+    if WEB_MODE:
+        from . import web_secrets
+        return web_secrets.get(name)
     if sys.platform == "darwin":
         return _keychain_get(name)
     if os.name != "nt":
@@ -179,6 +182,10 @@ def get_secret(name: str) -> str:
 
 
 def set_secret(name: str, value: str) -> None:
+    if WEB_MODE:
+        from . import web_secrets
+        web_secrets.set_value(name, value)
+        return
     if sys.platform == "darwin":
         _keychain_set(name, value)
         return

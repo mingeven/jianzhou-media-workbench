@@ -12,6 +12,15 @@ Python 3.11+ · FastAPI · SQLite · Vue 3 · 本地优先
 
 </div>
 
+| 云端项目入口 | 当前状态 |
+| --- | --- |
+| 打开工作台 | 固定 HTTPS 入口尚未上线，参见 [私有预览说明](docs/web-preview.md) |
+| 进入管理后台 | `/admin`，随已认证的 Web 预览启用 |
+| 查看开发进度 | [GitHub Pull Requests](https://github.com/mingeven/jianzhou-media-workbench/pulls) |
+| 查看测试状态 | [GitHub Actions](https://github.com/mingeven/jianzhou-media-workbench/actions/workflows/cloud-preview.yml) |
+| 查看部署状态 | [部署与恢复说明](docs/web-preview.md#固定托管部署和回滚)，固定部署尚未开通 |
+
+
 ![见舟工作台总览](docs/assets/screenshots/workbench.png)
 
 > 当前源码版本为 **v2.1.0**。上图及下方截图均来自隔离的演示工作区，账号、内容和指标为演示数据。

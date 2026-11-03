@@ -12,11 +12,14 @@
     try {
       resp = await fetch(url, opt);
     } catch (e) {
-      throw { code: 'NETWORK_ERROR', message: '无法连接本地服务：' + e.message, trace_id: '-' };
+      throw { code: 'NETWORK_ERROR', message: '无法连接工作台：' + e.message, trace_id: '-' };
     }
     let data;
     try { data = await resp.json(); } catch (e) {
       throw { code: 'BAD_RESPONSE', message: '服务返回了非 JSON 内容（HTTP ' + resp.status + '）', trace_id: '-' };
+    }
+    if (resp.status === 401 && data.error?.code === 'ADMIN_REQUIRED' && location.pathname !== '/admin') {
+      location.assign('/admin?next=workbench');
     }
     if (!resp.ok || data.success === false) {
       throw (data.error || { code: 'UNKNOWN', message: '未知错误', trace_id: '-' });
