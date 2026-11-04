@@ -54,6 +54,21 @@ def browser_check(browser, origin, password, test_key, workdir, restart=False):
         assert ctx.request.post(origin + "/api/admin/backup", headers={"Origin": origin}).status == 401
         assert ctx.request.post(origin + "/api/admin/login", data={"password": password},
                                 headers={"Origin": "https://unrelated.example"}).status == 403
+        login_url = origin + "/api/admin/login"
+        forwarded_headers = {
+            "Origin": "http://localhost:8741",
+            "Referer": origin + "/admin",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        expected_status = 403 if restart else 422
+        assert ctx.request.post(login_url, data={}, headers=forwarded_headers).status == expected_status
+        for override in (
+            {"Sec-Fetch-Site": "cross-site"},
+            {"Referer": "https://unrelated.example/admin"},
+            {"Referer": ""},
+            {"Origin": "http://localhost:9999"},
+        ):
+            assert ctx.request.post(login_url, data={}, headers={**forwarded_headers, **override}).status == 403
         page = ctx.new_page()
         page.goto(origin + "/")
         expect(page).to_have_url(origin + "/admin?next=workbench")
@@ -142,7 +157,8 @@ def main():
                         "-out", str(workdir / "cert.pem")], check=True, capture_output=True)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
-            with server(workdir, origin, port, env):
+            codespaces_env = {**env, "CODESPACES": "true", "JIANZHOU_BUILD_PROFILE": "codespaces"}
+            with server(workdir, origin, port, codespaces_env):
                 browser_check(browser, origin, password, test_key, workdir)
             print("Chromium: HTTPS, login, legacy API protection, writes, secret redaction, audit, backup and logout passed")
             with server(workdir, origin, port, env):

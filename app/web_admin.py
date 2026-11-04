@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from . import db
+from . import config, db
 from .api import now, ok
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -73,10 +73,26 @@ def _is_public(request: Request) -> bool:
     return request.method in {"GET", "HEAD"} and (path in PUBLIC_PATHS or path.startswith("/assets/"))
 
 
+def _trusted_write_origin(request: Request, origin: str) -> bool:
+    headers = request.headers
+    if headers.get("origin") == origin:
+        return True
+    # Codespaces rewrites the browser Origin to the local forwarding target.
+    # Require the original HTTPS host and same-origin browser metadata.
+    return (
+        config.BUILD_PROFILE == "codespaces"
+        and os.environ.get("CODESPACES") == "true"
+        and headers.get("origin") in {"http://localhost:8741", "http://127.0.0.1:8741"}
+        and headers.get("host") == urlsplit(origin).netloc
+        and headers.get("sec-fetch-site") == "same-origin"
+        and headers.get("referer", "").startswith(origin + "/")
+    )
+
+
 async def authorize(request: Request, call_next, origin: str):
     path = request.url.path
     mutating = request.method not in SAFE_METHODS
-    if mutating and request.headers.get("origin") != origin:
+    if mutating and not _trusted_write_origin(request, origin):
         return _denied("ORIGIN_NOT_ALLOWED", "请从工作台页面发起操作。", 403)
     if not _is_public(request):
         request.state.admin = _session(request)
