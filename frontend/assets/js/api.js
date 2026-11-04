@@ -1,7 +1,10 @@
 /* API 客户端：统一 success/error 结构；Typed Error 透传给错误弹层。 */
 (function () {
   async function request(method, url, body, isForm) {
-    const opt = { method, headers: {} };
+    const opt = { method, mode: 'same-origin', headers: {} };
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      opt.headers['X-Jianzhou-Request'] = 'same-origin';
+    }
     if (body && !isForm) {
       opt.headers['Content-Type'] = 'application/json';
       opt.body = JSON.stringify(body);

@@ -57,18 +57,20 @@ def browser_check(browser, origin, password, test_key, workdir, restart=False):
         login_url = origin + "/api/admin/login"
         forwarded_headers = {
             "Origin": "http://localhost:8741",
-            "Referer": origin + "/admin",
-            "Sec-Fetch-Site": "same-origin",
+            "X-Jianzhou-Request": "same-origin",
         }
         expected_status = 403 if restart else 422
         assert ctx.request.post(login_url, data={}, headers=forwarded_headers).status == expected_status
-        for override in (
-            {"Sec-Fetch-Site": "cross-site"},
-            {"Referer": "https://unrelated.example/admin"},
-            {"Referer": ""},
-            {"Origin": "http://localhost:9999"},
-        ):
-            assert ctx.request.post(login_url, data={}, headers={**forwarded_headers, **override}).status == 403
+        assert ctx.request.post(login_url, data={}, headers={"Origin": "http://localhost:8741"}).status == 403
+        for site in ("cross-site", "same-site"):
+            headers = {**forwarded_headers, "Sec-Fetch-Site": site}
+            assert ctx.request.post(login_url, data={}, headers=headers).status == 403
+        preflight = ctx.request.fetch(login_url, method="OPTIONS", headers={
+            "Origin": "https://unrelated.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-jianzhou-request",
+        })
+        assert "access-control-allow-origin" not in preflight.headers
         page = ctx.new_page()
         page.goto(origin + "/")
         expect(page).to_have_url(origin + "/admin?next=workbench")

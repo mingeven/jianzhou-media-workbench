@@ -75,17 +75,17 @@ def _is_public(request: Request) -> bool:
 
 def _trusted_write_origin(request: Request, origin: str) -> bool:
     headers = request.headers
+    if headers.get("sec-fetch-site") in {"cross-site", "same-site"}:
+        return False
     if headers.get("origin") == origin:
         return True
-    # Codespaces rewrites the browser Origin to the local forwarding target.
-    # Require the original HTTPS host and same-origin browser metadata.
+    # The Codespaces proxy can rewrite Origin. A browser can send this
+    # non-safelisted header cross-origin only after a successful CORS preflight.
+    # The preview does not enable CORS or grant cross-origin preflight requests.
     return (
         config.BUILD_PROFILE == "codespaces"
         and os.environ.get("CODESPACES") == "true"
-        and headers.get("origin") in {"http://localhost:8741", "http://127.0.0.1:8741"}
-        and headers.get("host") == urlsplit(origin).netloc
-        and headers.get("sec-fetch-site") == "same-origin"
-        and headers.get("referer", "").startswith(origin + "/")
+        and headers.get("x-jianzhou-request") == "same-origin"
     )
 
 

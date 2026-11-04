@@ -190,7 +190,9 @@
       logRows(key) { return this.data?.operations?.[key] || this.data?.[key] || []; },
       async backup() {
         await this.action(async () => {
-          const resp = await fetch('/api/admin/backup',{method:'POST'});
+          const resp = await fetch('/api/admin/backup',{
+            method:'POST', mode:'same-origin', headers:{'X-Jianzhou-Request':'same-origin'}
+          });
           if (!resp.ok) throw (await resp.json()).error;
           const url = URL.createObjectURL(await resp.blob()), link = document.createElement('a');
           link.href = url; link.download = 'jianzhou-backup.db'; link.click();
