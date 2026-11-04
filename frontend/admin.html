@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理后台 · 见舟工作台</title>
+<link rel="stylesheet" href="/assets/css/app.css?v=20260811-file-picker-v7">
+<link rel="stylesheet" href="/assets/css/admin.css">
+<script defer src="/assets/js/vue.global.prod.js"></script>
+<script defer src="/assets/js/api.js?v=codespaces-csrf"></script>
+<script defer src="/assets/js/admin.js?v=codespaces-csrf"></script>
+</head>
+<body>
+<noscript>请启用 JavaScript 后使用见舟管理后台。</noscript>
+<div id="admin-root">
+  <p class="adm-splash">正在打开见舟管理后台…</p>
+</div>
+<template id="admin-template">
+  <section v-if="!authenticated" class="adm-login">
+    <div class="adm-login-card">
+      <div class="brand-mark">舟</div>
+      <p class="adm-brand">见舟工作台</p>
+      <h1>管理员登录</h1>
+      <p v-if="loading">正在检查登录状态…</p>
+      <form v-else-if="configured" @submit.prevent="signIn">
+        <label for="admin-password">管理员密码</label>
+        <input id="admin-password" v-model="password" type="password" autocomplete="current-password" required maxlength="512">
+        <button type="submit" class="adm-primary" :disabled="busy">{{ busy ? '正在登录…' : '登录' }}</button>
+      </form>
+      <p v-else>管理员尚未初始化。请在云端设置管理员密码并重启预览。</p>
+      <p v-if="error" class="adm-error" role="alert">{{ error }}</p>
+      <button v-if="error && !configured" type="button" @click="checkSession">重试连接</button>
+    </div>
+  </section>
+  <div v-else class="adm-shell">
+    <aside class="adm-sidebar">
+      <a class="adm-identity" href="/" aria-label="打开工作台"><span class="brand-mark">舟</span><span>见舟工作台<small>管理后台</small></span></a>
+      <nav aria-label="管理栏目">
+        <button v-for="tab in tabs" :key="tab.id" type="button" :aria-current="view === tab.id ? 'page' : null" :disabled="busy" @click="choose(tab.id)">{{ tab.label }}</button>
+      </nav>
+      <a class="adm-workbench" href="/">返回工作台</a>
+    </aside>
+    <main class="adm-main">
+      <header class="adm-header">
+        <div><h1>{{ active.label }}</h1><p>{{ active.description }}</p></div>
+        <button type="button" :disabled="busy" @click="signOut">退出登录</button>
+      </header>
+      <p v-if="notice" class="adm-notice" role="status">{{ notice }}</p>
+      <div v-if="error" class="adm-error" role="alert">{{ error }} <button type="button" @click="refresh()">重试加载</button></div>
+      <p v-if="loading" class="adm-loading" role="status">正在加载…</p>
+      <div v-else-if="data" :key="view" class="adm-content">
+        <template v-if="view === 'providers' || view === 'system'">
+          <section v-for="group in settingsGroups[view]" :key="group.key" class="adm-panel">
+            <h2>{{ group.label }}</h2>
+            <form class="adm-form" @submit.prevent="saveSettings(group)">
+              <admin-fields :fields="group.fields" :model="data[group.key]"></admin-fields>
+              <div v-if="group.secret" class="adm-field">
+                <label :for="'key-' + group.key">{{ group.secret[1] }} · {{ data[group.key][group.secret[0] + '_configured'] ? '已配置' : '未配置' }}</label>
+                <input :id="'key-' + group.key" v-model="secrets[group.key]" type="password" autocomplete="new-password" placeholder="留空则保留当前凭据" maxlength="4096">
+              </div>
+              <button class="adm-primary" :disabled="busy">保存{{ group.label }}</button>
+            </form>
+          </section>
+          <section v-if="view === 'system'" class="adm-panel">
+            <h2>数据备份</h2>
+            <p>下载数据库快照，包含配置和业务记录。上传素材由云端存储另行备份。</p>
+            <button type="button" :disabled="busy" @click="backup">下载数据库备份</button>
+          </section>
+        </template>
+        <template v-else-if="view === 'operations'">
+          <section class="adm-panel">
+            <h2>运行状态</h2>
+            <dl class="adm-metrics">
+              <div><dt>运行模式</dt><dd>{{ data.runtime.demo_mode ? '演示' : '真实' }}</dd></div>
+              <div><dt>数据库版本</dt><dd>{{ data.runtime.schema_version }}</dd></div>
+              <div><dt>今日用量</dt><dd>¥{{ data.usage.today }} / ¥{{ data.usage.daily_budget }}</dd></div>
+              <div><dt>本月用量</dt><dd>¥{{ data.usage.month }} / ¥{{ data.usage.monthly_budget }}</dd></div>
+            </dl>
+            <p>凭据加密{{ data.operations.encrypted_keys ? '已启用' : '尚未配置' }}</p>
+          </section>
+          <section v-for="log in logTables" :key="log.key" class="adm-panel">
+            <h2>{{ log.label }}</h2>
+            <div v-if="logRows(log.key).length" class="adm-table-wrap">
+              <table><thead><tr><th v-for="column in log.columns" :key="column[0]" scope="col">{{ column[1] }}</th></tr></thead>
+                <tbody><tr v-for="(row, index) in logRows(log.key)" :key="index"><td v-for="column in log.columns" :key="column[0]">{{ row[column[0]] ?? '—' }}</td></tr></tbody>
+              </table>
+            </div>
+            <p v-else>暂无记录。</p>
+          </section>
+        </template>
+        <template v-else>
+          <section v-for="group in recordGroups[view]" :key="group.key" class="adm-panel">
+            <div class="adm-panel-heading"><h2>{{ group.label }}</h2><button type="button" :disabled="busy" @click="edit(group)">新增</button></div>
+            <form v-if="editor?.group === group.key" class="adm-form adm-editor" @submit.prevent="saveRecord(group)">
+              <h3>{{ editor.id ? '编辑' : '新增' }}{{ group.singular }}</h3>
+              <admin-fields :fields="editor.fields" :model="editor.values"></admin-fields>
+              <div class="adm-actions"><button class="adm-primary" :disabled="busy">保存{{ group.singular }}</button><button type="button" :disabled="busy" @click="editor = null">取消</button></div>
+            </form>
+            <ul v-if="data[group.key].length" class="adm-records">
+              <li v-for="row in data[group.key]" :key="row.id">
+                <div><strong>{{ group.title(row) }}</strong><small>{{ group.summary(row) }}</small></div>
+                <div class="adm-actions">
+                  <button v-if="group.update && !row.builtin" type="button" :disabled="busy" @click="edit(group,row)">编辑</button>
+                  <button v-if="group.makeDefault && !row.is_default" type="button" :disabled="busy" @click="makeDefault(group,row)">设为默认</button>
+                  <button v-if="group.remove && !row.builtin" type="button" :disabled="busy" @click="removeRecord(group,row)">{{ group.removeLabel || '移除' }}</button>
+                </div>
+              </li>
+            </ul>
+            <p v-else class="adm-empty">暂无{{ group.label }}，可点击「新增」开始。</p>
+          </section>
+          <a v-if="view === 'library'" class="adm-link" href="/#/packages">打开资料中心管理上传素材</a>
+        </template>
+      </div>
+    </main>
+  </div>
+</template>
+</body>
+</html>

@@ -1,0 +1,10 @@
+**
+!requirements.txt
+!app/
+!app/**
+!frontend/
+!frontend/**
+!scripts/
+!scripts/start_hosted_preview.sh
+**/__pycache__
+**/*.pyc

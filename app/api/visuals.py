@@ -764,6 +764,23 @@ def create_prompt_preset(body: PromptPresetIn):
     return ok({"id": preset_id, "note": "提示词预设已保存。"})
 
 
+@router.put("/prompt-presets/{preset_id}")
+def update_prompt_preset(preset_id: str, body: PromptPresetIn):
+    uid = current_user_id()
+    row = query_one("SELECT builtin FROM visual_prompt_presets WHERE id=? AND user_id=? AND active=1",
+                    (preset_id, uid))
+    if not row:
+        raise not_found("提示词预设", preset_id)
+    if row["builtin"]:
+        raise state_invalid("内置提示词预设不能修改。")
+    if body.scope not in {"cover", "graphic_note"}:
+        raise validation_failed("提示词预设必须属于封面或图文。")
+    execute("UPDATE visual_prompt_presets SET name=?,scope=?,template_text=?,negative_prompt=?,updated_at=? "
+            "WHERE id=? AND user_id=? AND active=1 AND builtin=0",
+            (body.name.strip(), body.scope, body.template_text.strip(), body.negative_prompt.strip(), now(), preset_id, uid))
+    return ok({"id": preset_id, "note": "提示词预设已更新。"})
+
+
 @router.delete("/prompt-presets/{preset_id}")
 def delete_prompt_preset(preset_id: str):
     uid = current_user_id(); row = query_one("SELECT builtin FROM visual_prompt_presets WHERE id=? AND user_id=? AND active=1", (preset_id, uid))

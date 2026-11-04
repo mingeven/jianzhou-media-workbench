@@ -1,0 +1,57 @@
+name: Cloud preview checks
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JIANZHOU_DEMO: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: python -m pip install -r requirements.txt
+      - run: python -m compileall -q app app.py tests
+      - name: Run unit tests with isolated data
+        run: |
+          export JIANZHOU_DATA_DIR="$(mktemp -d "$RUNNER_TEMP/jianzhou-test.XXXXXX")"
+          python -m unittest discover -s tests -v
+
+      - name: Install cloud browser
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Verify HTTPS workbench, admin and restart in Chromium
+        run: python scripts/check_web_preview.py
+      - name: Build deployment image
+        run: docker build -f Dockerfile.web -t jianzhou-preview:ci .
+      - name: Verify container startup with mounted data
+        run: |
+          tmp="$(mktemp -d "$RUNNER_TEMP/jianzhou-container.XXXXXX")"
+          export JIANZHOU_ADMIN_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          export JIANZHOU_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          trap 'docker rm -f jianzhou-preview-ci >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name jianzhou-preview-ci --publish 127.0.0.1:18741:8741 \
+            --mount "type=bind,source=$tmp,target=/var/lib/jianzhou" \
+            -e JIANZHOU_ADMIN_PASSWORD -e JIANZHOU_SECRET_KEY \
+            -e JIANZHOU_WEB_ORIGIN=https://preview.example.test jianzhou-preview:ci
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:18741/healthz && sudo test -f "$tmp/app.db"; then exit 0; fi
+            sleep 1
+          done
+          docker logs jianzhou-preview-ci
+          exit 1

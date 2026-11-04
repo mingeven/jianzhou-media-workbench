@@ -2,13 +2,15 @@
 import json
 import shutil
 import copy
+import math
 import urllib.parse
+from contextlib import nullcontext
 
 from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel, Field
 
 from .. import config
-from ..db import execute, jdumps, jloads, query, query_one
+from ..db import execute, jdumps, jloads, query, query_one, transaction
 from ..errors import validation_failed
 from ..secret_store import get_secret, has_secret, set_secret
 from . import current_user_id, ok, today
@@ -146,7 +148,22 @@ def put_settings(body: SettingsIn):
     if body.section == "execution":
         if incoming.get("mode") not in {"demo", "real"}:
             raise validation_failed("运行模式只能是 demo 或 real")
+        if config.PREVIEW_ONLY and incoming["mode"] != "demo":
+            raise validation_failed("预览环境只允许演示模式")
     _validate_shape(incoming, template, body.section)
+    if config.WEB_MODE:
+        ranges = {
+            "cost": {"daily_budget": (0, 1000000), "monthly_budget": (0, 1000000),
+                     "weekly_capacity_hours": (0, 168)},
+            "source": {"daily_request_limit": (1, 100000)},
+        }
+        for name, (low, high) in ranges.get(body.section, {}).items():
+            if name in incoming:
+                value = incoming[name]
+                if (type(value) not in (int, float) or not low <= value <= high
+                        or not math.isfinite(value)
+                        or (name == "daily_request_limit" and type(value) is not int)):
+                    raise validation_failed(f"请检查 {name} 的数值范围")
     old_row = query_one("SELECT value_json FROM app_settings WHERE key=?",
                         (body.section,))
     old = jloads(old_row["value_json"], {}) if old_row else {}
@@ -157,13 +174,14 @@ def put_settings(body: SettingsIn):
         _validate_voice_values(merged)
     if body.section == "image":
         _validate_image_values(merged)
-    for secret_name, secret_value in secret_updates:
-        set_secret(secret_name, secret_value)
-    execute("INSERT OR REPLACE INTO app_settings VALUES(?,?)",
-            (body.section, jdumps(merged)))
+    with transaction() if config.WEB_MODE else nullcontext():
+        for secret_name, secret_value in secret_updates:
+            set_secret(secret_name, secret_value)
+        execute("INSERT OR REPLACE INTO app_settings VALUES(?,?)",
+                (body.section, jdumps(merged)))
     if body.section == "execution":
         config.set_demo_mode(merged.get("mode") != "real")
-    return ok({"note": "设置已保存；密钥由当前操作系统的安全凭据库保护，且不会通过 API 回传",
+    return ok({"note": "设置已保存；凭据不会通过 API 回传",
                "demo_mode": config.DEMO_MODE})
 
 
@@ -262,9 +280,11 @@ def runtime():
     schema_version = next(iter(version.values())) if version else 0
     return ok({
         "demo_mode": config.DEMO_MODE,
+        "web_mode": config.WEB_MODE,
         "app_name": config.APP_NAME,
         "version": config.APP_VERSION,
         "build_profile": config.BUILD_PROFILE,
+        "web_mode": config.WEB_MODE,
         "build_id": config.BUILD_ID,
         "schema_version": schema_version,
         "db_path": str(config.DB_PATH),
@@ -419,6 +439,8 @@ class DatasourceCheckIn(BaseModel):
 @router.post("/datasource/check")
 def ds_check(body: DatasourceCheckIn):
     """Use the user's public account as an explicit, potentially billable probe."""
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..datasource import EndpointExecutor, SUPPORTED_PLATFORMS
     if body.platform not in SUPPORTED_PLATFORMS:
         raise validation_failed(f"暂不支持平台：{body.platform}")
@@ -441,6 +463,8 @@ class LLMCheckIn(BaseModel):
 
 @router.get("/llm/models")
 def llm_models():
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealLLMProvider
     models = RealLLMProvider().list_models()
     return ok({"models": models, "count": len(models),
@@ -449,6 +473,8 @@ def llm_models():
 
 @router.post("/llm/check")
 def llm_check(body: LLMCheckIn):
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealLLMProvider
     result = RealLLMProvider().check_connection(body.model)
     return ok({**result, "note": f"模型 {result['model']} 连接与最小生成测试通过。"})
@@ -475,6 +501,8 @@ def image_check():
 @router.post("/stt/check")
 async def stt_check(file: UploadFile = File(...)):
     """Explicit, potentially billable ASR probe with a user-supplied audio file."""
+    if config.PREVIEW_ONLY:
+        raise validation_failed("此预览仅使用演示服务，无法连接真实供应商。")
     from ..providers import RealSTTProvider
     payload = await file.read(config.MAX_AUDIO_UPLOAD_BYTES + 1)
     if len(payload) > config.MAX_AUDIO_UPLOAD_BYTES:

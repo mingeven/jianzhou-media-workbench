@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    JIANZHOU_WEB_MODE=1 JIANZHOU_PREVIEW_ONLY=1 JIANZHOU_DEMO=1 \
+    JIANZHOU_BUILD_PROFILE=web-preview JIANZHOU_DATA_DIR=/var/lib/jianzhou
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk util-linux \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 jianzhou && useradd --uid 10001 --gid 10001 jianzhou \
+    && mkdir -p /var/lib/jianzhou && chown 10001:10001 /var/lib/jianzhou
+WORKDIR /srv/jianzhou
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+COPY frontend ./frontend
+COPY scripts/start_hosted_preview.sh ./start_hosted_preview.sh
+EXPOSE 8741
+CMD ["sh", "./start_hosted_preview.sh"]

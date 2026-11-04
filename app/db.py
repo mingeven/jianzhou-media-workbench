@@ -1437,6 +1437,21 @@ MIGRATIONS = [
 ]
 
 
+if os.environ.get("JIANZHOU_WEB_MODE") == "1":
+    SCHEMA += """
+    CREATE TABLE IF NOT EXISTS web_sessions (
+        token_digest TEXT PRIMARY KEY, expires INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS web_audit (
+        id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL,
+        method TEXT NOT NULL, route TEXT NOT NULL, status INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS web_secrets (
+        name TEXT PRIMARY KEY, ciphertext BLOB NOT NULL
+    );
+    """
+
+
 def connect() -> sqlite3.Connection:
     if not hasattr(_local, "conn") or _local.conn is None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
